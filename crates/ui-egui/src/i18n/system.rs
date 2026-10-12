@@ -96,6 +96,7 @@ mod tests {
             (vec!["pt-PT"], "pt-br"),
             (vec!["it-IT", "en-US"], "it"),
             (vec!["nl-BE", "fr-BE"], "nl"),
+            (vec!["hu-HU", "en-US"], "hu"),
             (vec!["tr-TR", "en-US"], "tr"),
             (vec![], "en"),
         ] {
