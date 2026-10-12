@@ -141,7 +141,7 @@ fn inflate(source: &[u8]) -> Result<String, String> {
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 18] = [
+pub static LANGUAGES: [LangInfo; 19] = [
     LangInfo { code: "en", name: "English", source: b"", plural: plural_one_other, complete_menus: false, catalog: OnceLock::new() },
     LangInfo { code: "ja", name: "日本語", source: catalog!("ja"), plural: plural_none, complete_menus: true, catalog: OnceLock::new() },
     LangInfo { code: "zh-hans", name: "简体中文", source: catalog!("zh-hans"), plural: plural_none, complete_menus: true, catalog: OnceLock::new() },
@@ -164,6 +164,8 @@ pub static LANGUAGES: [LangInfo; 18] = [
     // Dutch; `nl-NL` and `nl-BE` locales both resolve here.
     LangInfo { code: "nl", name: "Nederlands", source: catalog!("nl"), plural: plural_one_other, complete_menus: true, catalog: OnceLock::new() },
     LangInfo { code: "it", name: "Italiano", source: catalog!("it"), plural: plural_one_other, complete_menus: true, catalog: OnceLock::new() },
+    // Turkish; `tr`, `tr-TR` and `tr_TR` locales resolve here.
+    LangInfo { code: "tr", name: "Türkçe", source: catalog!("tr"), plural: plural_none, complete_menus: true, catalog: OnceLock::new() },
     // Vietnamese; `vi-VN` resolves here.
     LangInfo { code: "vi", name: "Tiếng Việt", source: catalog!("vi"), plural: plural_none, complete_menus: true, catalog: OnceLock::new() },
 ];
@@ -418,6 +420,9 @@ mod tests {
         assert_eq!(lang_from_tag("it-CH"), Lang::from_code("it"));
         assert_eq!(lang_from_tag("nl_NL.UTF-8"), Lang::from_code("nl"));
         assert_eq!(lang_from_tag("nl-BE"), Lang::from_code("nl"));
+        assert_eq!(lang_from_tag("tr_TR.UTF-8"), Lang::from_code("tr"));
+        assert_eq!(lang_from_tag("tr-TR"), Lang::from_code("tr"));
+        assert_eq!(lang_from_tag("tr"), Lang::from_code("tr"));
         // Traditional Chinese: by region, by script, and with a region after the script.
         assert_eq!(lang_from_tag("zh_TW.UTF-8"), Some(ZH()));
         assert_eq!(lang_from_tag("zh-TW"), Some(ZH()));
