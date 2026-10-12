@@ -1251,9 +1251,9 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) ->
             }
             // Distort only moves corners (and the whole box from inside): no rotating, no edges.
             // Even in Distort mode, remember an outside press so a plain click can
-            // accept the transform. A drag outside remains inert in that mode, and in
+            // accept the transform. A drag outside remains inert in that mode, in Skew, and in
             // Content-Aware Scale, which only scales and moves.
-            pv.gesture = (distort_allows(t.mode, h) || h == Hit::Outside).then_some(Gesture { hit: h, start: [x, y], quad0: t.quad, pivot0: t.pivot });
+            pv.gesture = (mode_allows(t.mode, h) || h == Hit::Outside).then_some(Gesture { hit: h, start: [x, y], quad0: t.quad, pivot0: t.pivot });
         }
         ToolEvent::Move { x, y, .. } | ToolEvent::Up { x, y } => {
             let g = pv.gesture;
@@ -1268,15 +1268,20 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) ->
                 return true;
             }
             let legacy = app.session.prefs().general.use_legacy_free_transform;
+            let type_layer = moves_type(app, &t);
             if let (Some(g), Some(s)) = (g, app.ui.transform.as_mut())
-                && distort_allows(t.mode, g.hit)
+                && mode_allows(t.mode, g.hit)
                 && (t.content_aware.is_none() || g.hit != Hit::Outside)
             {
                 let (mode, mods) = if no_distort { scale_not_distort(t.mode, g.hit, mods) } else { (t.mode, mods) };
-                let mut mods = mode_mods(mode, g.hit, legacy_mods(legacy, g.hit, mods));
-                // Content-Aware Scale: ⌘ neither skews nor distorts.
-                mods.command &= t.content_aware.is_none();
-                apply_drag(s, g, [x, y], mods);
+                if t.content_aware.is_some() {
+                    let mut mods = mode_mods(mode, g.hit, legacy_mods(legacy, g.hit, mods));
+                    // Content-Aware Scale: ⌘ neither skews nor distorts.
+                    mods.command = false;
+                    apply_drag(s, g, [x, y], mods);
+                } else {
+                    apply_mode_drag(s, g, [x, y], mode, type_layer, legacy_mods(legacy, g.hit, mods));
+                }
             }
         }
     }
@@ -1318,11 +1323,11 @@ pub(crate) fn legacy_mods(legacy: bool, hit: Hit, mut mods: egui::Modifiers) -> 
     mods
 }
 
-/// Skew / Distort / Perspective modes: a handle drag acts as if that gesture's keys were held
-/// (⌘-drag an edge skews, ⌘-drag a corner distorts, ⌘⌥⇧-drag a corner adds perspective).
+/// Distort / Perspective modes: a corner drag acts as if that gesture's keys were held (⌘-drag a
+/// corner distorts, ⌘⌥⇧-drag a corner adds perspective). Skew has its own ([`apply_mode_drag`]).
 fn mode_mods(mode: TransformMode, hit: Hit, mut mods: egui::Modifiers) -> egui::Modifiers {
     match (mode, hit) {
-        (TransformMode::Skew, Hit::Edge(_)) | (TransformMode::Distort, Hit::Corner(_)) => mods.command = true,
+        (TransformMode::Distort, Hit::Corner(_)) => mods.command = true,
         (TransformMode::Perspective, Hit::Corner(_)) => {
             mods.command = true;
             mods.alt = true;
@@ -1333,9 +1338,67 @@ fn mode_mods(mode: TransformMode, hit: Hit, mut mods: egui::Modifiers) -> egui::
     mods
 }
 
-/// In Distort mode only corner drags (and moving the box from inside) do anything.
-fn distort_allows(mode: TransformMode, h: Hit) -> bool {
-    mode != TransformMode::Distort || !matches!(h, Hit::Outside | Hit::Edge(_))
+/// A handle drag in Edit › Transform `mode` (`Free` for Free Transform). `type_layer`: the box
+/// moves editable type, which only takes affine transforms.
+pub(crate) fn apply_mode_drag(s: &mut TransformSession, g: Gesture, p: [f64; 2], mode: TransformMode, type_layer: bool, mut mods: egui::Modifiers) {
+    if !mode_allows(mode, g.hit) {
+        return;
+    }
+    match (mode, g.hit) {
+        // Skew, as in Photoshop (#3437): a corner moves alone along one of its two edges,
+        // whichever the drag mostly follows; ⌥ moves the opposite corner the other way.
+        (TransformMode::Skew, Hit::Corner(i)) if i < 4 => {
+            let (d, q0) = ([p[0] - g.start[0], p[1] - g.start[1]], g.quad0);
+            // Corners 0..3 = TL, TR, BR, BL: the neighbour along the top/bottom edge, and along
+            // the left/right one.
+            let along = |j: usize| {
+                let e = [q0[i][0] - q0[j][0], q0[i][1] - q0[j][1]];
+                let l = e[0].hypot(e[1]);
+                let u = if l > 0.0 { [e[0] / l, e[1] / l] } else { [0.0, 0.0] };
+                let t = d[0] * u[0] + d[1] * u[1];
+                [t * u[0], t * u[1]]
+            };
+            let (hn, vn) = ([1, 0, 3, 2][i], [3, 2, 1, 0][i]);
+            let (h, v) = (along(hn), along(vn));
+            let (m, partner) = if h[0].hypot(h[1]) >= v[0].hypot(v[1]) { (h, hn) } else { (v, vn) };
+            // Editable type stays a parallelogram: the corner's whole edge slides with it.
+            let moved: &[usize] = if type_layer { &[i, partner] } else { &[i] };
+            let mut q = q0;
+            for k in 0..4 {
+                let sign = if moved.contains(&k) {
+                    1.0
+                } else if mods.alt && (if type_layer { true } else { k == (i + 2) % 4 }) {
+                    // ⌥: the opposite corner (on type, the opposite edge) the other way.
+                    -1.0
+                } else {
+                    continue;
+                };
+                if let (Some(dst), Some(src)) = (q.get_mut(k), q0.get(k)) {
+                    *dst = [src[0] + sign * m[0], src[1] + sign * m[1]];
+                }
+            }
+            s.quad = keep_convex(q0, q);
+            s.pivot = carry_pivot(q0, s.quad, g.pivot0);
+        }
+        // Skew: an edge slides only along itself (⌘⇧ in Free Transform).
+        (TransformMode::Skew, Hit::Edge(_)) => {
+            mods.command = true;
+            mods.shift = true;
+            apply_drag(s, g, p, mods);
+        }
+        _ => apply_drag(s, g, p, mode_mods(mode, g.hit, mods)),
+    }
+}
+
+/// What a drag can do in each Edit › Transform mode: in Distort only the corners (and moving the
+/// box from inside); in Skew everything but rotating from outside the box (#3437). A click
+/// outside still commits.
+fn mode_allows(mode: TransformMode, h: Hit) -> bool {
+    match mode {
+        TransformMode::Distort => !matches!(h, Hit::Outside | Hit::Edge(_)),
+        TransformMode::Skew => h != Hit::Outside,
+        _ => true,
+    }
 }
 
 /// The turn at each corner of a quad (cross products of consecutive edges): all the same sign
@@ -1770,8 +1833,12 @@ pub(crate) fn rotate_cursor_dir(app: &PhotocraftApp, p: [f64; 2]) -> Option<[f64
 }
 
 fn rotate_dir(t: &TransformSession, pv: Option<&TransformPreview>, p: [f64; 2], tol: f64) -> Option<[f64; 2]> {
-    // Content-Aware Scale's box only scales: no rotate arrow.
-    if !(p[0].is_finite() && p[1].is_finite()) || t.warp.is_some() || t.content_aware.is_some() || t.mode == TransformMode::Distort {
+    // Content-Aware Scale's box only scales, and Skew doesn't rotate: no rotate arrow.
+    if !(p[0].is_finite() && p[1].is_finite())
+        || t.warp.is_some()
+        || t.content_aware.is_some()
+        || matches!(t.mode, TransformMode::Distort | TransformMode::Skew)
+    {
         return None;
     }
     let rotating = pv.is_some_and(|pv| pv.gesture.is_some_and(|g| g.hit == Hit::Outside));
@@ -1812,7 +1879,7 @@ pub fn cursor(app: &PhotocraftApp, p: [f64; 2], quick_split: bool) -> Option<Cur
         return Some(if w.mesh.as_ref().and_then(|m| surface_at(m, p)).is_some() { CursorIcon::Grab } else { CursorIcon::Default });
     }
     let h = hit(t, p, tol);
-    if !distort_allows(t.mode, h) || (t.content_aware.is_some() && h == Hit::Outside) {
+    if !mode_allows(t.mode, h) || (t.content_aware.is_some() && h == Hit::Outside) {
         return Some(CursorIcon::Default);
     }
     if rotate_cursor_dir(app, p).is_some() {
@@ -2962,6 +3029,60 @@ mod tests {
     fn drag(s: &mut TransformSession, from: [f64; 2], to: [f64; 2], mods: egui::Modifiers) {
         let g = Gesture { hit: hit(s, from, 8.0), start: from, quad0: s.quad, pivot0: s.pivot };
         apply_drag(s, g, to, mods);
+    }
+
+    /// A handle drag in Edit › Transform `mode`, as the canvas applies it (on a pixel layer).
+    fn drag_in(mode: TransformMode, from: [f64; 2], to: [f64; 2], mods: egui::Modifiers) -> [[f64; 2]; 4] {
+        drag_on(mode, false, from, to, mods)
+    }
+
+    fn drag_on(mode: TransformMode, type_layer: bool, from: [f64; 2], to: [f64; 2], mods: egui::Modifiers) -> [[f64; 2]; 4] {
+        let mut s = session();
+        let g = Gesture { hit: hit(&s, from, 8.0), start: from, quad0: s.quad, pivot0: s.pivot };
+        apply_mode_drag(&mut s, g, to, mode, type_layer, mods);
+        s.quad
+    }
+
+    /// Skew on editable type, checked in Photoshop: a corner can't move alone (type stays a
+    /// parallelogram), so it slides its whole edge: the top or bottom edge for a mostly
+    /// horizontal drag, the left or right one for a mostly vertical drag. ⌥ moves the opposite
+    /// edge the other way. Side handles are as on any layer.
+    #[test]
+    fn skew_mode_on_type_slides_the_corners_edge() {
+        let (skew, none) = (TransformMode::Skew, egui::Modifiers::NONE);
+        assert_eq!(drag_on(skew, true, [100.0, 0.0], [110.0, 3.0], none), [[10.0, 0.0], [110.0, 0.0], [100.0, 50.0], [0.0, 50.0]]);
+        assert_eq!(drag_on(skew, true, [100.0, 0.0], [102.0, -9.0], none), [[0.0, 0.0], [100.0, -9.0], [100.0, 41.0], [0.0, 50.0]]);
+        assert_eq!(drag_on(skew, true, [100.0, 0.0], [110.0, 3.0], egui::Modifiers::ALT), [[10.0, 0.0], [110.0, 0.0], [90.0, 50.0], [-10.0, 50.0]]);
+        assert_eq!(drag_on(skew, true, [50.0, 0.0], [62.0, 7.0], none), [[12.0, 0.0], [112.0, 0.0], [100.0, 50.0], [0.0, 50.0]]);
+    }
+
+    /// Edit › Transform › Skew, checked in Photoshop (#3437): a corner moves alone, horizontally or
+    /// vertically (whichever way the drag mostly goes); the top and bottom handles slide only
+    /// horizontally, the left and right ones only vertically; ⌥ moves the opposite corner or edge
+    /// the other way. Nothing scales.
+    #[test]
+    fn skew_mode_moves_a_corner_or_an_edge_along_one_axis() {
+        let skew = TransformMode::Skew;
+        let none = egui::Modifiers::NONE;
+        // Corner (top right), mostly horizontal, then mostly vertical: only that corner moves.
+        assert_eq!(drag_in(skew, [100.0, 0.0], [110.0, 3.0], none), [[0.0, 0.0], [110.0, 0.0], [100.0, 50.0], [0.0, 50.0]]);
+        assert_eq!(drag_in(skew, [100.0, 0.0], [102.0, -9.0], none), [[0.0, 0.0], [100.0, -9.0], [100.0, 50.0], [0.0, 50.0]]);
+        // Top edge: horizontal only, both its corners.
+        assert_eq!(drag_in(skew, [50.0, 0.0], [62.0, 7.0], none), [[12.0, 0.0], [112.0, 0.0], [100.0, 50.0], [0.0, 50.0]]);
+        // Left edge: vertical only.
+        assert_eq!(drag_in(skew, [0.0, 25.0], [6.0, 33.0], none), [[0.0, 8.0], [100.0, 0.0], [100.0, 50.0], [0.0, 58.0]]);
+        // ⌥: the opposite corner, and the opposite edge, go the other way.
+        let alt = egui::Modifiers::ALT;
+        assert_eq!(drag_in(skew, [100.0, 0.0], [110.0, 3.0], alt), [[0.0, 0.0], [110.0, 0.0], [100.0, 50.0], [-10.0, 50.0]]);
+        assert_eq!(drag_in(skew, [50.0, 0.0], [62.0, 7.0], alt), [[12.0, 0.0], [112.0, 0.0], [88.0, 50.0], [-12.0, 50.0]]);
+        // ⇧ changes nothing in Skew mode.
+        let shift = egui::Modifiers::SHIFT;
+        assert_eq!(drag_in(skew, [100.0, 0.0], [110.0, 3.0], shift), drag_in(skew, [100.0, 0.0], [110.0, 3.0], none));
+        assert_eq!(drag_in(skew, [50.0, 0.0], [62.0, 7.0], shift), drag_in(skew, [50.0, 0.0], [62.0, 7.0], none));
+        // A drag outside the box doesn't rotate it in Skew mode.
+        assert_eq!(drag_in(skew, [130.0, 25.0], [120.0, 60.0], none), corners([0.0, 0.0, 100.0, 50.0]));
+        // Free Transform is unchanged: a corner scales.
+        assert_ne!(drag_in(TransformMode::Free, [100.0, 0.0], [110.0, 3.0], none)[2], [100.0, 50.0]);
     }
 
     fn close(a: [[f64; 2]; 4], b: [[f64; 2]; 4]) -> bool {

@@ -388,6 +388,11 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
             return;
         }
     }
+    // A Properties Levels/Curves eyedropper: Esc disarms it.
+    if crate::layer_picker::armed(app).is_some() && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
+        crate::layer_picker::cancel(app);
+        return;
+    }
     // Crop tool with a pending frame: arrows nudge it (⇧ ×10) and X swaps its orientation, before
     // the selection / layer nudge and the X colour swap (#1919).
     if focus == Focus::None && crate::crop_ui::keys(app, ctx) {
@@ -578,6 +583,8 @@ mod tests {
             handle(app, &ctx);
             ctx.end_pass().textures_delta.clear();
         };
+        // Plain-key cycling (the pref is on by default, as in Photoshop).
+        app.session.edit_prefs(|p| p.tools.use_shift_key_for_tool_switch = false);
         // Polygonal Lasso picked from the toolbar flyout, then the Brush (#2608).
         app.ui.tool = Tool::PolygonLasso;
         press(&mut app, Key::B, Modifiers::NONE);
@@ -596,6 +603,37 @@ mod tests {
         press(&mut app, Key::B, Modifiers::NONE);
         press(&mut app, Key::L, Modifiers::NONE);
         assert_eq!(app.ui.tool, Tool::MagneticLasso);
+    }
+
+    /// #3296: by default T keeps the current type tool and only Shift+T cycles, as in Photoshop.
+    #[test]
+    fn shift_key_tool_switch_is_the_default() {
+        use crate::state::Tool;
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        let ctx = egui::Context::default();
+        let press = |app: &mut PhotocraftApp, modifiers| {
+            let raw = egui::RawInput {
+                events: vec![
+                    egui::Event::ModifiersChanged(modifiers),
+                    egui::Event::Key { key: Key::T, physical_key: None, pressed: true, repeat: false, modifiers },
+                ],
+                ..Default::default()
+            };
+            ctx.begin_pass(raw);
+            handle(app, &ctx);
+            ctx.end_pass().textures_delta.clear();
+        };
+        app.ui.tool = Tool::Type;
+        press(&mut app, Modifiers::NONE);
+        press(&mut app, Modifiers::NONE);
+        assert_eq!(app.ui.tool, Tool::Type);
+        press(&mut app, Modifiers::SHIFT);
+        assert_ne!(app.ui.tool, Tool::Type);
+        // A stored "off" restores plain-key cycling.
+        app.session.edit_prefs(|p| p.tools.use_shift_key_for_tool_switch = false);
+        app.ui.tool = Tool::Type;
+        press(&mut app, Modifiers::NONE);
+        assert_ne!(app.ui.tool, Tool::Type);
     }
 
     /// #3109: on a German layout Ö / # (physical `;` / `\`) step the brush size and ⇧Ö / ⇧#

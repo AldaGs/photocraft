@@ -246,6 +246,27 @@ pub fn value_field(ui: &mut Ui, value: &mut f32, range: std::ops::RangeInclusive
     value_field_in(ui, value, range, suffix, width, 0.0, FieldOpts::default()).0
 }
 
+/// A single-line label for a row that also holds fixed-width controls: laid out no wider than
+/// `max_w`, cut with '…' when the text (often a longer translation) does not fit, with the full
+/// string on hover. Fixed chrome must never let a label overrun its row (#3580), so an *essential*
+/// label beside a fixed control should use this rather than a show/hide fit check; a *redundant*
+/// label (one whose control already carries the meaning, e.g. an icon row's caption) may be dropped.
+pub fn elided_label_sensed(ui: &mut Ui, text: &str, max_w: f32, sense: Sense) -> Response {
+    let t = Tokens::get(ui.ctx());
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let galley = crate::tab_strip::elided(ui, text, font, t.text_dim, max_w);
+    let elided = galley.elided;
+    let (rect, resp) = ui.allocate_exact_size(galley.size(), sense);
+    ui.painter().galley(rect.min, galley, t.text_dim);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, ui.is_enabled(), text));
+    if elided { resp.on_hover_text(text) } else { resp }
+}
+
+/// [`elided_label_sensed`] with hover only (a plain, non-interactive label).
+pub fn elided_label(ui: &mut Ui, text: &str, max_w: f32) -> Response {
+    elided_label_sensed(ui, text, max_w, Sense::hover())
+}
+
 /// Height of a [`value_field`]'s box.
 pub const VALUE_FIELD_H: f32 = 24.0;
 
@@ -1592,6 +1613,20 @@ mod tests {
             Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
             "a bad cell falls back to 4 pt"
         );
+    }
+
+    /// #3580: the shared eliding label never lays out wider than the room it is given, so a longer
+    /// translation shrinks with '…' instead of overrunning its row; a short label is untouched.
+    #[test]
+    fn elided_label_never_exceeds_its_room() {
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(240.0, 60.0)).build_ui(|ui| {
+            let long = super::elided_label(ui, "Preenchimento:", 24.0); // pt-br Fill:, the longest catalog
+            assert!(long.rect.width() <= 25.0, "elided to the room, got {}", long.rect.width());
+            let short = super::elided_label(ui, "Fill", 200.0);
+            assert!(short.rect.width() < 60.0, "a short label is not padded: {}", short.rect.width());
+        });
+        crate::PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::Studio);
+        h.run_steps(2);
     }
 
     #[test]
