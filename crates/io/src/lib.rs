@@ -61,6 +61,7 @@ pub mod text_styles_map;
 pub mod tiff_layers;
 pub mod vector_map;
 
+pub use photocraft_codecs::DpxBits;
 use photocraft_codecs::{CodecError, EncodeOptions};
 use photocraft_doc::Document;
 use photocraft_psd::{PsdError, PsdFile};

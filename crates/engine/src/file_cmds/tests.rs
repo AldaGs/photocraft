@@ -155,6 +155,32 @@ fn save_a_copy_writes_the_targa_bits_asked_for() {
     }
 }
 
+/// `dpxBits` picks a DPX's bits per sample (byte 803 of the header); unset, it follows the
+/// document's depth. Anything but 8, 10, 12 or 16 is refused before anything is written.
+#[test]
+fn save_a_copy_writes_the_dpx_bits_asked_for() {
+    let dir = tmp("dpx-bits");
+    for (depth, params, bits) in
+        [(8, json!({}), 8), (16, json!({}), 16), (16, json!({"dpxBits": 10}), 10), (8, json!({"dpxBits": 12}), 12), (16, json!({"dpxBits": null}), 16)]
+    {
+        let mut s = session(12, 6, depth);
+        let out = join(&dir, "a.dpx");
+        let mut p = params.clone();
+        p["path"] = json!(out);
+        s.execute("file.saveACopy", p).unwrap();
+        let bytes = std::fs::read(&out).unwrap();
+        assert_eq!((&bytes[..4], bytes[803]), (&b"SDPX"[..], bits), "{depth}-bit {params}");
+        assert_eq!(photocraft_io::import("a.dpx", &bytes).unwrap().document.size, photocraft_geom::Size::new(12, 6));
+    }
+    let mut s = session(8, 8, 8);
+    for bad in [json!(24), json!(0), json!("10"), json!(10.5)] {
+        let out = join(&dir, "bad.dpx");
+        let r = s.execute("file.saveACopy", json!({"path": out, "dpxBits": bad}));
+        assert!(matches!(r, Err(EngineError::BadParams { .. })), "{bad}: {r:?}");
+        assert!(!std::path::Path::new(&out).exists(), "{bad}: nothing written");
+    }
+}
+
 /// A `tgaBits` other than 24 or 32 is a bad parameter, reported before anything is written.
 #[test]
 fn bad_targa_bits_are_refused_before_writing() {

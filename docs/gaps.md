@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (G4: checkbox-only Brush Settings rows; stroke-quality and performance gaps unchanged; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-12 · **Change:** minor (G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; stroke-quality and performance gaps unchanged; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -195,7 +195,7 @@ what an agent can't finish alone.
 ### G10. Missing and partial file formats
 - **Missing:** JPEG Options dialog (FILE-215-19), Photoshop PDF read and write and multi-page PDF
   (FILE-215-10, #2541), AVIF read (#463) and default-build AVIF write, JPEG XL, JPEG 2000 (#1047),
-  DPX/Cineon (#1049), DICOM, EPS/DCS, PCX, Pixar, IFF, WBMP, MPO/JPS, PICT, Scitex CT, Photoshop
+  Cineon (DPX landed, #1049), DICOM, EPS/DCS, PCX, Pixar, IFF, WBMP, MPO/JPS, PICT, Scitex CT, Photoshop
   Raw; layered TIFF extra alpha channels (FILE-215-7); spot plates (FILE-215-17); .atn, .asl,
   .shc, .csh presets (FILE-215-15); TGA/PNG alpha channels on open (#2225); C2PA (#1050).
 - **Detail:** [`file-format-parity.md`](file-format-parity.md).
@@ -238,6 +238,7 @@ what an agent can't finish alone.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-12 | minor | G10: DPX read and write (#1049); Cineon remains open |
 | 2026-10-12 | minor | G4: checkbox-only Brush Settings rows preserve the open controls and Smoothing settings (#4283); no readiness percentage or estimate changed |
 | 2026-10-12 | minor | G11: Load/Save Actions `.atn` landed (AUTO-219-2 partial); remaining panel work listed |
 | 2026-10-11 | minor | D5100 image area and Camera Raw tuning validation; G14 remains open |

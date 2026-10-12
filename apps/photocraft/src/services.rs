@@ -21,8 +21,8 @@ mod recovery_tests;
 /// (.kys), which go to the preset libraries and Edit › Keyboard Shortcuts.
 const OPEN_EXTS: &[&str] = &[
     "pcraft", "pdn", "ora", "kra", "psd", "psb", "psdt", "png", "jpg", "jpeg", "tif", "tiff", "webp", "gif", "bmp", "tga", "ico", "qoi", "exr", "hdr", "pbm",
-    "pgm", "ppm", "pam", "pfm", "pcx", "fits", "fit", "fts", "heic", "heif", "hif", "dng", "cr2", "cr3", "nef", "nrw", "arw", "pef", "orf", "rw2", "raf",
-    "abr", "grd", "svg", "svgz", "aco", "ase", "kys", "af", "afdesign", "afphoto", "afpub",
+    "pgm", "ppm", "pam", "pfm", "pcx", "fits", "fit", "fts", "dpx", "heic", "heif", "hif", "dng", "cr2", "cr3", "nef", "nrw", "arw", "pef", "orf", "rw2",
+    "raf", "abr", "grd", "svg", "svgz", "aco", "ase", "kys", "af", "afdesign", "afphoto", "afpub",
 ];
 const SVG_EXTS: &[&str] = &["svg", "svgz"];
 
@@ -62,6 +62,7 @@ const SAVE_FILTERS: &[(&str, &[&str])] = &[
     ("Targa", &["tga"]),
     ("OpenEXR", &["exr"]),
     ("FITS", &["fits", "fit"]),
+    ("DPX", &["dpx"]),
 ];
 
 /// Non-document files the shell saves (Swatches panel exports): offered alone, so the dialog

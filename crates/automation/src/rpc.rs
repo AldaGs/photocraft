@@ -116,6 +116,7 @@ impl Headless {
                 let tga_bits = photocraft_engine::file_cmds::tga_bits_param(&p, "doc.save").map_err(|e| bad(e.to_string()))?;
                 let mut opts =
                     photocraft_io::ExportOptions { tiff_layers: p.get("tiffLayers").and_then(Value::as_bool).unwrap_or(false), tga_bits, ..Default::default() };
+                opts.encode.dpx_bits = photocraft_engine::file_cmds::dpx_bits_param(&p, "doc.save").map_err(|e| bad(e.to_string()))?;
                 if let Some(q) = p.get("quality").and_then(Value::as_u64) {
                     opts.encode.jpeg_quality = q.clamp(1, 100) as u8;
                     opts.encode.webp_quality = q.clamp(1, 100) as u8;
