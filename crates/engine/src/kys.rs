@@ -13,7 +13,8 @@
 //! command's main key, unless one of its keys is already the command's default (Zoom In lists
 //! `Cmd++` before `Cmd+=`); its other keys become the command's alternates (#3665: Copy is
 //! `Cmd+C` and `F3`, and importing it must not leave `Cmd+C` unbound). Tool keys are not
-//! imported: the tool letters are fixed here.
+//! imported yet (#5036). [`write`] saves a set the same way, with our command id on each row
+//! (`pc-id`, which Photoshop ignores), so PhotoCraft reads its own sets back exactly.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -23,10 +24,12 @@ use crate::prefs::normalize_shortcut;
 pub const MAX_BYTES: usize = 4 << 20;
 
 /// One `<command>` row: Photoshop's label and its shortcuts, first one primary.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct KysCommand {
     pub name: String,
     pub shortcuts: Vec<String>,
+    /// Our command id, in sets PhotoCraft wrote ([`write`]'s `pc-id`): matched before the label.
+    pub id: Option<String>,
 }
 
 /// The parsed set: its name, its command rows and how many tools carry a key.
@@ -63,7 +66,8 @@ pub fn parse(text: &str) -> Result<KysSet, String> {
                     .filter_map(|n| n.text().map(str::trim).filter(|t| !t.is_empty()).map(str::to_string))
                     .collect();
                 if !shortcuts.is_empty() {
-                    set.commands.push(KysCommand { name: name.to_string(), shortcuts });
+                    let id = node.attribute(PC_ID).map(str::trim).filter(|i| !i.is_empty()).map(str::to_string);
+                    set.commands.push(KysCommand { name: name.to_string(), shortcuts, id });
                 }
             }
             "tool" if node.text().is_some_and(|t| !t.trim().is_empty()) => set.tool_keys += 1,
@@ -124,9 +128,12 @@ pub fn plan(candidates: impl IntoIterator<Item = Candidate>, set: &KysSet) -> Pl
             entry.push((c.id, c.default));
         }
     }
+    let by_id: HashMap<&str, &(String, Option<String>)> = by_label.values().flatten().map(|c| (c.0.as_str(), c)).collect();
     let mut plan = Plan::default();
     for row in &set.commands {
-        let Some(candidates) = by_label.get(&key(&row.name)) else {
+        // A set PhotoCraft wrote names the command itself, whatever its label says.
+        let own = row.id.as_deref().and_then(|id| by_id.get(id)).map(|c| vec![(*c).clone()]);
+        let Some(candidates) = own.as_ref().or_else(|| by_label.get(&key(&row.name))) else {
             plan.unknown.push(row.name.clone());
             continue;
         };
@@ -157,6 +164,68 @@ pub fn plan(candidates: impl IntoIterator<Item = Candidate>, set: &KysSet) -> Pl
         }
     }
     plan
+}
+
+/// The attribute naming our command id on the rows PhotoCraft writes (Photoshop ignores it).
+pub const PC_ID: &str = "pc-id";
+
+/// One row to write: a command (or tool), its label and its keys, main key first.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Entry {
+    pub id: String,
+    pub label: String,
+    pub tool: bool,
+    pub keys: Vec<String>,
+}
+
+/// A key in the spelling Photoshop's macOS sets use (`Control+Opt+Shift+Cmd+G`): our `Ctrl` is
+/// Control, `Alt` is Opt. `None` for a key that isn't one.
+pub fn photoshop_key(sc: &str) -> Option<String> {
+    let n = normalize_shortcut(sc)?;
+    // The key is the last part; `Cmd++` ends in an empty part, so take it from the string.
+    let (mods, key) = match n.strip_suffix("++") {
+        Some(m) => (m, "+"),
+        None => n.rsplit_once('+').unwrap_or(("", n.as_str())),
+    };
+    let has = |m: &str| mods.split('+').any(|x| x == m);
+    let mut out: Vec<&str> =
+        [("Ctrl", "Control"), ("Alt", "Opt"), ("Shift", "Shift"), ("Cmd", "Cmd")].iter().filter(|(ours, _)| has(ours)).map(|(_, ps)| *ps).collect();
+    out.push(key);
+    Some(out.join("+"))
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&apos;")
+}
+
+/// A `.kys` file for the set `name` (Edit › Keyboard Shortcuts › Save Set): every entry with a
+/// key, commands then tools, labels with Photoshop's `...`, keys in [`photoshop_key`] spelling,
+/// and our id on each row so PhotoCraft reads its own sets back exactly. Rows without a key are
+/// left out, and a key that isn't one is skipped.
+pub fn write(name: &str, entries: &[Entry]) -> String {
+    let name = xml_escape(name.trim());
+    let mut out = format!(
+        "\u{feff}<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<photoshop-keyboard-shortcuts version=\"4\" filename=\"$$$/FileName/Presets/KeyboardCustomization/{name}={name}\">\n"
+    );
+    let row = |e: &Entry| -> Option<String> {
+        let keys: Vec<String> = e.keys.iter().filter_map(|k| photoshop_key(k)).collect();
+        let first = keys.first()?;
+        let label = xml_escape(&e.label.replace('…', "..."));
+        let id = xml_escape(&e.id);
+        Some(if e.tool {
+            format!("\t<tool name=\"{label}\" {PC_ID}=\"{id}\">{}</tool>\n", xml_escape(first))
+        } else {
+            let shortcuts: String = keys.iter().map(|k| format!("<shortcut>{}</shortcut>", xml_escape(k))).collect();
+            format!("\t<command kind=\"static\" name=\"{label}\" {PC_ID}=\"{id}\">{shortcuts}</command>\n")
+        })
+    };
+    for e in entries.iter().filter(|e| !e.tool).chain(entries.iter().filter(|e| e.tool)) {
+        if let Some(r) = row(e) {
+            out.push_str(&r);
+        }
+    }
+    out.push_str("</photoshop-keyboard-shortcuts>\n");
+    out
 }
 
 #[cfg(test)]
@@ -210,5 +279,46 @@ mod tests {
         let big = format!("<photoshop-keyboard-shortcuts>{}</photoshop-keyboard-shortcuts>", " ".repeat(MAX_BYTES));
         assert!(parse(&big).unwrap_err().contains("4 MiB"));
         assert!(parse("<other/>").unwrap_err().contains("not a keyboard shortcut set"));
+    }
+
+    #[test]
+    fn written_sets_read_back_exactly_and_keys_use_photoshops_spelling() {
+        assert_eq!(photoshop_key("Cmd+Alt+Shift+Ctrl+g").as_deref(), Some("Control+Opt+Shift+Cmd+G"));
+        assert_eq!(photoshop_key("Cmd++").as_deref(), Some("Cmd++"));
+        assert_eq!(photoshop_key("F3").as_deref(), Some("F3"));
+        assert_eq!(photoshop_key("Cmd+Shift+Ctrl"), None);
+        let entries = vec![
+            Entry { id: "edit.copy".into(), label: "Copy".into(), tool: false, keys: vec!["Cmd+C".into(), "F3".into()] },
+            Entry { id: "x.odd".into(), label: "Levels…".into(), tool: false, keys: vec!["Cmd+Alt+L".into()] },
+            Entry { id: "tools.select.move".into(), label: "Move Tool".into(), tool: true, keys: vec!["V".into()] },
+            Entry { id: "none".into(), label: "Unbound".into(), tool: false, keys: vec![] },
+            Entry { id: "bad".into(), label: "A <\"weird\"> & 'name'".into(), tool: false, keys: vec!["Cmd+Shift+Ctrl".into(), "F9".into()] },
+        ];
+        let xml = write(" My & Set ", &entries);
+        assert!(xml.contains("KeyboardCustomization/My &amp; Set=My &amp; Set"), "{xml}");
+        assert!(xml.contains("<command kind=\"static\" name=\"Levels...\" pc-id=\"x.odd\"><shortcut>Opt+Cmd+L</shortcut></command>"), "{xml}");
+        assert!(!xml.contains("Unbound"), "{xml}");
+        assert!(xml.find("Move Tool").unwrap() > xml.find("Levels").unwrap(), "tools after commands");
+        let set = parse(&xml).unwrap();
+        assert_eq!(set.name.as_deref(), Some("My & Set"));
+        assert_eq!(set.tool_keys, 1);
+        assert_eq!(set.commands.len(), 3);
+        assert_eq!(set.commands[0], KysCommand { name: "Copy".into(), shortcuts: vec!["Cmd+C".into(), "F3".into()], id: Some("edit.copy".into()) });
+        assert_eq!(set.commands[2].name, "A <\"weird\"> & 'name'");
+        assert_eq!(set.commands[2].shortcuts, vec!["F9".to_string()]);
+        // The id wins over the label: a renamed or translated label still finds its command.
+        let cands = || {
+            vec![
+                Candidate { id: "x.odd".into(), label: "Something Else".into(), default: None },
+                Candidate { id: "y.levels".into(), label: "Levels".into(), default: Some("Cmd+L".into()) },
+            ]
+        };
+        let p = plan(cands(), &set);
+        assert_eq!(p.set.get("x.odd").map(String::as_str), Some("Cmd+Alt+L"));
+        assert!(!p.set.contains_key("y.levels"));
+        // Without the id, the label matches as before.
+        let mut plain = set.clone();
+        plain.commands[1].id = None;
+        assert!(plan(cands(), &plain).set.contains_key("y.levels"));
     }
 }
