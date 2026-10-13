@@ -252,6 +252,22 @@ mod tests {
         assert_eq!(st.handle(2, [(2, 3.0)]), Update::Keep);
     }
 
+    /// Xwayland and libinput name the tools "… Pen (0x1234) eraser" / "… Eraser"; barrel rotation
+    /// wraps at the top of the range and never leaves 0..360.
+    #[test]
+    fn eraser_names_and_rotation_wrap() {
+        assert!(wacom(1, "xwayland-tablet-tool eraser").eraser);
+        assert!(wacom(1, "Wacom Cintiq Pro 16 Pen Eraser (0x2a)").eraser);
+        assert!(!wacom(1, "Wacom Cintiq Pro 16 Pen (0x2a)").eraser);
+        let mut st = State::default();
+        st.set_devices([wacom(1, "pen")]);
+        let rot = |st: &mut State, v| sample(st.handle(1, [(5, v)])).rotation;
+        assert_eq!(rot(&mut st, -900.0), 0.0);
+        assert_eq!(rot(&mut st, 899.0), 0.0, "the top of the range wraps to 0");
+        assert!(rot(&mut st, 898.0) > 359.0);
+        assert!((rot(&mut st, -450.0) - 90.0).abs() < 0.3);
+    }
+
     #[test]
     fn tilt_ranges_that_are_not_degrees_are_scaled() {
         let d =

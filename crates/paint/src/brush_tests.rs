@@ -306,7 +306,7 @@ fn tilt_direction_and_rotation_drive_angle() {
     let mut q = StrokePoint::new(0.0, 0.0, 1.0);
     q.rotation = 30.0;
     let d = dabs_of(&mk(Control::Rotation), &[q, StrokePoint { x: 20.0, ..q }]);
-    assert!((d[0].angle.to_degrees() - 30.0).abs() < 1e-3);
+    assert!((d[0].angle.to_degrees() + 30.0).abs() < 1e-3, "clockwise pen turn = clockwise tip");
     // Pen tilt on size: upright pen full size, flat pen minimum.
     let b = BrushSettings {
         shape_dynamics: ShapeDynamics { enabled: true, size: Dynamic::controlled(Control::PenTilt), ..Default::default() },
@@ -1151,7 +1151,7 @@ fn brush_projection_foreshortens_along_tilt_and_turns_with_rotation() {
     let mut b = mk(true);
     b.roundness = 0.5;
     let d = dabs_of(&b, &[pen(50.0, 50.0, 0.0, 0.0, 90.0)])[0];
-    assert!((d.angle.to_degrees() - 90.0).abs() < 1e-3);
+    assert!((d.angle.to_degrees() + 90.0).abs() < 1e-3);
     let (w, h) = extents(&b, &d);
     assert!(w < h, "{w}×{h}");
     // Dual-brush dabs are never projected.

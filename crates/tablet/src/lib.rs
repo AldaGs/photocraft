@@ -11,6 +11,9 @@
 //!   raw events on the root window and maps the tablet device's valuators ("Abs Pressure",
 //!   "Abs Tilt X/Y", "Abs Rotary Z") to samples. Raw events reach every client that asks, also
 //!   while winit holds the pointer grab of a drag. No `unsafe`.
+//! - **Windows** ([`windows::install`]): a window subclass reads `POINTER_PEN_INFO` (pressure,
+//!   tilt, rotation, eraser flags and the coalesced move history) from each `WM_POINTER*`
+//!   message before winit's window procedure and passes the message on. Win32 FFI only.
 //! - **Wayland**: not covered. The `zwp_tablet_v2` protocol has to be bound on winit's own
 //!   `wl_display` connection (the tablet events name winit's `wl_surface`), which needs
 //!   `unsafe` foreign-display interop, and binding it makes compositors stop emulating the
@@ -19,7 +22,7 @@
 //!   through Xwayland when a pen is attached, and the X11 reader applies.
 //!
 //! The platform glue only reads raw values and hands them to the pure mapping in [`appkit`] and
-//! [`xi`], which normalise, clamp and track pen state and are tested on every platform.
+//! [`xi`] and [`pointer`], which normalise, clamp and track pen state and are tested on every platform.
 //!
 //! A sample is reported through a callback: `Some(sample)` while a pen is in use (hovering or
 //! touching), `None` when the pointer is a mouse again.
@@ -27,10 +30,13 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod appkit;
+pub mod pointer;
 pub mod xi;
 
 #[cfg(target_os = "macos")]
 pub mod macos;
+#[cfg(windows)]
+pub mod windows;
 #[cfg(target_os = "linux")]
 pub mod x11;
 

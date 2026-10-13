@@ -3,11 +3,12 @@
 //!
 //! Sources, by platform (eframe 0.36.2, egui-winit 0.36.2, winit 0.30.13):
 //!
-//! - **Windows**: winit turns `WM_POINTER` pen and touch input into `WindowEvent::Touch` with a
-//!   normalised force (`POINTER_PEN_INFO::pressure / 1024`); egui-winit forwards it as
-//!   `egui::Event::Touch { force }` alongside the emulated pointer. [`Stylus::update`] reads it.
-//!   winit drops the pen's tilt and rotation, so those stay 0, and reports pressure 0 (a tap
-//!   lighter than the pen's first pressure level) as no force, which [`Stylus::update`] reads as
+//! - **Windows**: the desktop app subclasses its window (`photocraft-tablet`) and writes each
+//!   `WM_POINTER` pen sample, with the moves Windows coalesced, into the [`StylusFeed`]: pressure,
+//!   tilt, rotation and the eraser end. winit also turns the same input into
+//!   `WindowEvent::Touch` with a normalised force, forwarded as `egui::Event::Touch { force }`;
+//!   [`Stylus::update`] uses it only when the feed gave the frame no samples (subclass not
+//!   installed), and reads a missing force (a tap lighter than the pen's first pressure level) as
 //!   pressure 0 once it knows a pen is in use.
 //! - **Web**: eframe forwards touch force but not pen pointer events, so the web runner listens
 //!   to `pointerdown`/`pointermove` itself and writes `pressure`, `tiltX`, `tiltY`, `twist` and
@@ -196,6 +197,9 @@ impl Stylus {
             self.prev = Some(*last);
         }
         self.frame = self.feed.drain();
+        // A platform that feeds the pen itself (Windows Ink, web) also sends the touch force of
+        // the same contact: those samples would double the frame's pressure steps.
+        let fed = !self.frame.is_empty();
         self.current = None;
         for e in events {
             if let egui::Event::Touch { id, phase, force, .. } = e {
@@ -227,7 +231,9 @@ impl Stylus {
                         let force = force.or((down && self.touch_pen && (start || self.touch.is_none())).then_some(0.0));
                         if let Some(f) = force {
                             self.touch = Some(f);
-                            self.frame.push(PenSample { pressure: f, ..Default::default() });
+                            if !fed {
+                                self.frame.push(PenSample { pressure: f, ..Default::default() });
+                            }
                         }
                     }
                     egui::TouchPhase::End | egui::TouchPhase::Cancel => {
@@ -695,6 +701,20 @@ mod tests {
         assert_eq!(s.pressure(), 0.4);
         s.update(&[]);
         assert_eq!(s.pressure(), 1.0);
+    }
+
+    #[test]
+    fn fed_samples_are_not_doubled_by_the_touch_force_of_the_same_contact() {
+        let mut s = Stylus::default();
+        for p in [0.2, 0.4, 0.6] {
+            s.feed.set(Some(PenSample { pressure: p, ..Default::default() }));
+        }
+        s.update(&[touch(egui::TouchPhase::Start, Some(0.6))]);
+        assert_eq!(s.frame.len(), 3, "the feed's samples only");
+        // No feed (subclass not installed): the touch force is the sample.
+        let mut s = Stylus::default();
+        s.update(&[touch(egui::TouchPhase::Start, Some(0.6))]);
+        assert_eq!(s.frame.len(), 1);
     }
 
     fn touch_id(id: u64, phase: egui::TouchPhase, force: Option<f32>) -> egui::Event {

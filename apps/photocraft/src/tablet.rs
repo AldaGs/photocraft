@@ -1,10 +1,11 @@
-//! Pen tablet pressure, tilt, rotation and eraser end on macOS and Linux X11 (issue #79).
+//! Pen tablet pressure, tilt, rotation and eraser end on macOS, Windows and Linux X11 (issue #79).
 //!
 //! winit 0.30 drops tablet data on both, so `photocraft-tablet` reads it beside winit (an AppKit
 //! local event monitor; XInput2 raw events on a second X connection) and this module writes each
 //! sample into the UI's [`StylusFeed`], where the canvas reads it exactly like the web runner's
-//! Pointer Events and automation's simulated pen. Windows needs nothing here: winit forwards
-//! `WM_POINTER` pressure as touch force.
+//! Pointer Events and automation's simulated pen. On Windows a window subclass reads the pen's
+//! `POINTER_PEN_INFO` (and its coalesced history) before winit's window procedure, which only
+//! forwards `WM_POINTER` pressure as touch force.
 //!
 //! Wayland compositors give a pen only to clients that bind the tablet protocol
 //! (`zwp_tablet_v2`), which winit 0.30 doesn't (and binding it on winit's connection needs
@@ -34,6 +35,17 @@ pub fn sink(feed: StylusFeed) -> impl Fn(Option<Sample>) + Send + 'static {
 #[cfg(target_os = "macos")]
 pub fn install_macos(feed: &StylusFeed) -> Option<photocraft_tablet::macos::Monitor> {
     photocraft_tablet::macos::Monitor::install(sink(feed.clone())).map_err(|e| log::warn!("{e}")).ok()
+}
+
+/// Subclass the main window to read Windows Ink pen input (main thread, from eframe's app
+/// creation). On failure this logs why: the pen then paints through winit's touch force.
+#[cfg(windows)]
+pub fn install_windows(cc: &eframe::CreationContext<'_>, feed: &StylusFeed) {
+    use eframe::wgpu::rwh::{HasWindowHandle, RawWindowHandle};
+    let Some(RawWindowHandle::Win32(h)) = cc.window_handle().ok().map(|h| h.as_raw()) else { return };
+    if let Err(e) = photocraft_tablet::windows::install(h.hwnd.get(), sink(feed.clone())) {
+        log::warn!("{e}");
+    }
 }
 
 /// The display server to open the window on: the session's own, except Xwayland on Wayland when

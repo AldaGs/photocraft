@@ -1,6 +1,6 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** major (first version: GPU, pen tablets, displays, gestures per platform against Photoshop 2026) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (Windows Ink pen backend; Pen tablets table updated; untested on real hardware) · **Target:** Adobe Photoshop 2026
 
 Each hardware feature Photoshop 2026 (27.11.0) uses, per platform, against PhotoCraft. Photoshop
 side: its bundle (Metal and OpenCL paths, "Precise Color Management for HDR Display" and EDR
@@ -28,11 +28,11 @@ HDR display to verify.
 
 | Feature | Photoshop | macOS | Windows | Linux X11 | Linux Wayland | Web |
 |---|---|---|---|---|---|---|
-| Pressure | yes | yes (AppKit monitor) | yes (WM_POINTER), jumpy (#2046) | yes (XInput2) | via Xwayland only; GNOME 50 pen doesn't click (#2622), KDE (#2297) | yes |
-| Tilt | yes | yes | **no** | yes | no | yes |
-| Barrel rotation | yes | yes (not applied to tip angle, #1301) | no | partial | no | yes (twist) |
-| Eraser end | yes | yes | no (#2285) | partial | no | partial |
-| WinTab driver mode | yes | – | no | – | – | – |
+| Pressure | yes | yes (AppKit monitor) | yes (Windows Ink subclass, per-sample history; #2046 fix unverified on hardware) | yes (XInput2) | via Xwayland only; GNOME 50 pen doesn't click (#2622), KDE (#2297) | yes |
+| Tilt | yes | yes | yes (untested on hardware) | yes | no | yes |
+| Barrel rotation | yes | yes (drives the tip via Angle control Rotation / Brush Projection, #1301) | yes (untested on hardware) | yes (Abs Rotary Z; only pens that report it) | no | yes (twist) |
+| Eraser end | yes | yes | yes (PEN_FLAG_ERASER / INVERTED; untested on hardware, #2285) | yes (separate "eraser" XI device) | no | partial |
+| WinTab driver mode | yes | – | no (Windows Ink covers Wacom; still open) | – | – | – |
 | Pressure curve | Windows Ink / driver | global curve in Preferences (#2195) | same | same | same | same |
 
 ## Displays and colour
@@ -62,3 +62,4 @@ HDR display to verify.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-10-10 | major | First version |
+| 2026-10-13 | minor | Windows pen backend (tilt, rotation, eraser end, coalesced history), X11 rotation/eraser confirmed and tested, barrel rotation sign fixed for the tip angle |

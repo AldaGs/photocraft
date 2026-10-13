@@ -371,7 +371,8 @@ pub fn control_angle(c: Control, fade_steps: u32, s: &StepInput) -> f32 {
             }
         }
         Control::StylusWheel => 360.0 * p.wheel.clamp(0.0, 1.0),
-        Control::Rotation => p.rotation,
+        // The pen turns clockwise, angles count counter-clockwise (#1301).
+        Control::Rotation => -p.rotation,
         Control::InitialDirection => s.initial_direction.to_degrees(),
         Control::Direction => s.direction.to_degrees(),
     }
@@ -519,7 +520,7 @@ impl DabBuilder {
                     roundness = (roundness * k).clamp(0.01, 1.0);
                 }
                 if sd.brush_projection {
-                    angle += s.point.rotation;
+                    angle -= s.point.rotation;
                     if tilt > 0.0 {
                         proj_angle = (-s.point.tilt_y).atan2(s.point.tilt_x);
                         proj_scale = tilt.to_radians().cos().max(0.05);

@@ -44,9 +44,9 @@ tablets against Photoshop side by side.
 | Global pressure curve in Preferences | done | #2195 |
 | Per-control pressure curves | missing | TOOL-213-11 |
 | Quick taps keep their pressure | partial | #1967 fixed one case; tap paints a full blob (#1798), tap sensitivity (#1933) |
-| Smooth pressure on Windows | partial | "jumpy" (#2046) |
-| Tilt and rotation drive angle/roundness | partial | macOS, X11, web; not Windows; rotation not applied (#1301) |
-| Eraser end of the pen switches to Eraser | partial | macOS; flipped Wacom on Windows not (#2285) |
+| Smooth pressure on Windows | partial | Windows Ink per-sample history added; unverified on hardware (#2046) |
+| Tilt and rotation drive angle/roundness | partial | macOS, X11, Windows, web; rotation turns the tip clockwise with the pen (#1301) |
+| Eraser end of the pen switches to Eraser | partial | macOS, Windows (untested on hardware, #2285), X11 |
 
 ## Stroke quality and feel
 
