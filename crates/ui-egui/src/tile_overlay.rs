@@ -21,7 +21,6 @@ use std::sync::Arc;
 use egui::{Align2, Color32, FontId, Painter, Shape, Stroke};
 use photocraft_geom::{Rect as DRect, TILE_SIZE, TileCoord};
 use photocraft_raster::{Surface, Tile};
-use rayon::prelude::*;
 
 use crate::PhotocraftApp;
 use crate::canvas::ViewXform;
@@ -70,9 +69,17 @@ pub fn tile_infos(s: &Surface, parallel: bool) -> Vec<TileInfo> {
         by_ptr.entry(ptr(t)).or_insert(t);
     }
     let distinct: Vec<(usize, &Arc<Tile>)> = by_ptr.into_iter().collect();
+    #[cfg(not(target_arch = "wasm32"))]
     let hashed: Vec<(usize, u64)> = if parallel {
+        use rayon::prelude::*;
         distinct.par_iter().map(|(p, t)| (*p, content_hash(t))).collect()
     } else {
+        distinct.iter().map(|(p, t)| (*p, content_hash(t))).collect()
+    };
+    // No thread pool on the web: always hash serially.
+    #[cfg(target_arch = "wasm32")]
+    let hashed: Vec<(usize, u64)> = {
+        let _ = parallel;
         distinct.iter().map(|(p, t)| (*p, content_hash(t))).collect()
     };
     let hash_of: HashMap<usize, u64> = hashed.into_iter().collect();
