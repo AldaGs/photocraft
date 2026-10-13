@@ -309,7 +309,7 @@ pub struct UiSetParams {
     /// Fields for the control method `ui.set`: tool, panels, dock, dockTabs, dockWidth, colorPanel
     /// ({background: bool} picks which swatch the Color panel edits), maskTarget,
     /// vectorMaskTarget, selectionMode, zoom, center, rotation (view angle in degrees), fit, theme (pro, proMedium, studio,
-    /// studioLight, classic, solarizedDark, adwaita, adwaitaDark, breezeLight, breezeDark), brushSection, brushTab,
+    /// studioLight, classic, solarizedDark, adwaita, adwaitaDark, breezeLight, breezeDark, softLight, softDark), brushSection, brushTab,
     /// brushesView, brushPicker ([x, y] opens the Brush Preset picker there, null closes it),
     /// brushPickerName, brushPickerStroke, brushPickerTip (the picker card's parts, at least one
     /// on), brushPickerScale (the picker footer's card-scale slider, 0.15 to 2, 1 the standard),
@@ -323,7 +323,8 @@ pub struct UiSetParams {
     /// auto_adjust, classic_mode and auto_center_preview), shapeStroke (an object patching width, align, cap, join, miterLimit,
     /// dashes, dashOffset and opacity; null disables the stroke). Shape stroke fields use
     /// `shape.edit` names and units; colour comes from `tools.setColors`. camTransformOnDrop (bool,
-    /// the Content-Aware Move tool's Transform On Drop). Other fields are an error.
+    /// the Content-Aware Move tool's Transform On Drop). tileGrid (bool, a developer overlay of the
+    /// active layer's storage tiles). Other fields are an error.
     pub fields: Value,
 }
 
